@@ -47,6 +47,9 @@ class TestStringMethods(unittest.TestCase):
         fl = self.mps[0].factor_loadings
         avecr = self.mps[0].ave_cr
 
+    def test_write_excel(self):
+        self.mps[0].writeExcel('d:/text.xlsx')
+
 
 
 

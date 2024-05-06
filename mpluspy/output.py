@@ -158,7 +158,7 @@ class MplusParser:
         return pd.DataFrame({'AVE': ave, 'CR': cr})
 
 
-    def _parse_model_results(self, content: str):
+    def _parse_model_results(self, content: str)->dict:
         cols = None
         rows = []
         rowHeads = []
@@ -196,3 +196,14 @@ class MplusParser:
             rows=rows,
             rowheads=rowHeads,
         )
+
+    def writeExcel(self, fpath: Path):
+        # 验证 fpath 是有效的excel文件，然后将数据写入excel，一个dataframe写入一个worksheet
+        fpath = Path(fpath)
+        assert fpath.suffix in ('.xlsx', '.xls'), ValueError('fpath must have be a excel file')
+        writer = pd.ExcelWriter(fpath, engine='xlsxwriter')
+        for name in ('model_fit_information_df', 'factor_loadings', 'ave_cr', 'stdyx_model_results_df'):
+            df = getattr(self, name)
+            if df is not None:
+                df.to_excel(writer, sheet_name=name)
+        writer.close()
