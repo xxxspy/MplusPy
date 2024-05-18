@@ -4,16 +4,27 @@ from typing import List
 import pandas as pd
 from functools import cached_property
 
+class MplusError(ValueError):
+    pass
+
+VAR_NAME_PTN = r'[a-zA-Z0-9\_]+'
+NUMBER_PTN = r'\s([\-0-9\.]+)'
+
+
 class MplusParser:
-    TITLES = ("MODEL RESULTS", "STANDARDIZED MODEL RESULTS", "MODEL FIT INFORMATION")
+    TITLES = ("MODEL RESULTS", "STANDARDIZED MODEL RESULTS", "MODEL FIT INFORMATION",
+              'TOTAL, TOTAL INDIRECT, SPECIFIC INDIRECT, AND DIRECT EFFECTS', 
+              'STANDARDIZED TOTAL, TOTAL INDIRECT, SPECIFIC INDIRECT, AND DIRECT EFFECTS')
     
     def __init__(self, fpath: str) -> None:
         self.fpath = fpath
-        content = Path(fpath).read_text()
-        title_ptn = r"^\n[A-Z][A-Z \-]*\n$"
+        content = Path(fpath).read_text(encoding='utf8')
+        
+        title_ptn = r"^\n\n[A-Z][A-Z, \-]*\n$"
         titles = re.findall(title_ptn, content, re.MULTILINE)
         titles = [t.strip() for t in titles]
         parts = re.split(title_ptn, content, maxsplit=len(titles)+1, flags=re.MULTILINE)
+        self.errors(content)
         index = titles.index("MODEL RESULTS")
         self.model_results_str = parts[index+1]
         if self.TITLES[1] in titles:
@@ -24,6 +35,8 @@ class MplusParser:
         if self.TITLES[2] not in titles:
             raise ValueError(f"Can not find {self.TITLES[2]} in {titles}")
         self.model_fit_information_str = parts[titles.index(self.TITLES[2])+1]
+        self.parts = parts
+        self.titles = titles
         
     @cached_property
     def model_results(self):
@@ -51,6 +64,32 @@ class MplusParser:
                 for c in info['cols']:
                     df[c] = df[c].astype(float)
         return df
+    
+    def model_results_filter(self, df: pd.DataFrame, oper='BY'):
+        print(df)
+        index = df.index.map(lambda x : x[2].endswith(f'.{oper}'))
+        return df[index]
+
+    @cached_property
+    def structure_results_df(self)->pd.DataFrame:
+        df = self.model_results_filter(self.model_results_df, 'ON')
+        stddf = self.model_results_filter(self.stdyx_model_results_df, 'ON')
+        df.reset_index(inplace=True)
+        stddf.reset_index(inplace=True)
+        for c in ('level', 'group'):
+            if (df[c]=='').all():
+                del df[c]
+                del stddf[c]
+        def genpath(row: pd.Series):
+            dep = row['part']
+            if dep.endswith('.ON'):
+                dep = dep[:-3]
+            return f'{dep}<-{row["name"]}'
+        df['Path'] = df.apply(genpath, axis=1)
+        stddf['Path'] = df.apply(genpath, axis=1)
+        df['StdEstimate'] = stddf['Estimate']
+        return df[['Path', 'Estimate', 'StdEstimate', 'S.E.', 'Est./S.E.', 'P-Value']]
+        
 
     @cached_property
     def stdy_model_results_df(self)->pd.DataFrame:
@@ -91,7 +130,7 @@ class MplusParser:
             r['content'] = contents[i+1]
             results.append(r)
         return results
-
+    
     @cached_property
     def model_fit_information(self)->list[tuple]:
         content = self.model_fit_information_str
@@ -127,13 +166,12 @@ class MplusParser:
     @cached_property
     def factor_loadings(self)->pd.DataFrame:
         df = self.stdyx_model_results_df.copy(True)
-        df.reset_index(inplace=True)
-        if (df['level']=='').all():
-            del df['level']
-        if (df['group']=='').all():
-            del df['group']
-        
-        loadings = df[df['part'].map(lambda x : '.BY' in x)]
+        loadings = self.model_results_filter(df, 'BY')
+        loadings.reset_index(inplace=True)
+        if (loadings['level']=='').all():
+            del loadings['level']
+        if (loadings['group']=='').all():
+            del loadings['group']
         cols = list(loadings.columns)
         index = cols.index('part')
         cols[index] = 'factor'
@@ -156,9 +194,90 @@ class MplusParser:
         ave = sm['Estimate2']/sm['n']
         cr = sm['Estimate']**2/(sm['Estimate']**2 + sm['epsilons'])
         return pd.DataFrame({'AVE': ave, 'CR': cr})
+    
+    @cached_property
+    def corr_matrix(self)->pd.DataFrame:
+        params = self.stdyx_model_results_df.copy(deep=True)        
+        params = self.model_results_filter(params, 'WITH')
+        params.index = params.index.map(lambda x: x[2][:-5])
+        cols = []
+        index = []
+        for v in params['name']:
+            if v not in cols:
+                cols.append(v)
+        for v in params.index:
+            if v not in cols:
+                cols.append(v)
+        df = pd.DataFrame(index=cols, columns=cols)
+        for i in range(len(params)):
+            idx = params.index[i]
+            col = params['name'][i]
+            df.loc[idx, col] = params['Estimate'].iloc[i]
+        return df
 
+    @cached_property
+    def discriminant_df(self)->pd.DataFrame:
+        '''区分效度表，表中元素是相关系数的平方，对角线元素是AVE'''
+        crr = self.corr_matrix
+        disdf = crr ** 2
+        ave = self.ave_cr['AVE']
+        print(ave)
+        for vn in disdf.index:
+            disdf.loc[vn, vn] = ave[vn]
+        return disdf
+    
+    @cached_property
+    def indrect_df(self)->pd.DataFrame:
+        title = self.TITLES[3]
+        content = self.parts[self.titles.index(title) + 1]
+        df = self._parse_indirect_results(content)
+        return df
+    
+    def __parse_indirect_parts(self, partname, content: str)->list:
+        numptn = re.compile(NUMBER_PTN)
+        rowhead = []
+        rows = []
+        vname_ptn = re.compile(r'^\s+(' + VAR_NAME_PTN + ')$')
+        for line in content.split('\n'):
+            if not line.strip():continue
+            numbers = numptn.findall(line)
+            print(line)
+            print('numbers', numbers)
+            print('varname', vname_ptn.findall(line))
+            if 'Specific indirect' in line:
+                continue
+            elif len(numbers) == 4:
+                eles = line.split()
+                rowhead.append('.'.join(eles[:-4]))
+                rows.append([partname, '->'.join(rowhead)] + eles[-4:])
+                rowhead = []
+            elif vname_ptn.match(line):
+                rowhead.append(vname_ptn.findall(line)[0])
+        return rows
+                
+
+    
+    def _parse_indirect_results(self, content: str)->pd.DataFrame:
+        cols = 'Path Effect Estimate       S.E.  Est./S.E.    P-Value'.split()
+        part_ptn = re.compile(f'Effects from {VAR_NAME_PTN} to {VAR_NAME_PTN}')
+        print(part_ptn)
+        matches = part_ptn.findall(content)
+        rows = []
+        if matches:
+            parts = part_ptn.split(content)
+            print('len parts:', len(parts))
+            print(parts)
+            for i, part  in enumerate(parts):
+                if i == 0:continue
+                print('part:', part)
+                rows += self.__parse_indirect_parts(matches[i-1], part)
+        df = pd.DataFrame(rows, columns=cols)
+        print(df)
+        return df
 
     def _parse_model_results(self, content: str)->dict:
+        MaxRowHeadLen = 10
+        number_ptn = re.compile(r'\s([\-0-9\.]+)')
         cols = None
         rows = []
         rowHeads = []
@@ -168,6 +287,7 @@ class MplusParser:
         for line in content.split('\n'):
             data = line.strip().split(' ')
             data = [c for c in data if c]
+            numbers = number_ptn.findall(line)
             if len(data)  == 0:
                 continue
             if cols is None:
@@ -177,7 +297,7 @@ class MplusParser:
                 level = data[0]
             elif line.startswith("Group "):
                 group = data[1]
-            elif len(data) == 5:
+            elif len(numbers) == 4: # data row
                 rows.append(data)
                 if rowHead:
                     rowHeads.append([level, group] + rowHead)
@@ -190,7 +310,7 @@ class MplusParser:
         if cols is None:
             raise ValueError("Can not find table column names in MODEL RESULTS")
         lens = [len(rh) for rh in rowHeads]
-        assert max(lens) == min(lens), ValueError(rowHeads)
+        assert max(lens) == min(lens), ValueError(f'rowHeads not the sampe length: {lens} {rowHeads}')
         return dict(
             cols=cols,
             rows=rows,
@@ -207,3 +327,48 @@ class MplusParser:
             if df is not None:
                 df.to_excel(writer, sheet_name=name)
         writer.close()
+
+    def errors(self, content: str):
+        ptn = re.compile(r'\*\*\* ERROR in [A-Z]+ command\n')
+        ms = ptn.search(content)
+        if ms:
+            info = ptn.split(content)[1]
+            err = ''
+            for line in info.split('\n'):
+                err += line
+                if not line.strip():
+                    break
+            err += f'\n File is : {self.fpath}'
+            raise MplusError(err)
+        
+
+def aggregate_fits(fitdfs: list[pd.DataFrame], titles: list[str]):
+    '''
+    多个模型的拟合指标聚合到一起，方便比较
+    '''
+    assert len(fitdfs) == len(titles), ValueError(f'{len(fitdfs)} != {len(titles)}')
+    indices = [
+        ('Chi-Square Test of Model Fit', 'Value', 'χ２'),
+        ('Chi-Square Test of Model Fit', 'Degrees of Freedom', 'df'),
+        ('CFI/TLI', 'CFI', 'CFI'),
+        ('CFI/TLI', 'TLI', 'TLI'),
+        ('RMSEA (Root Mean Square Error Of Approximation)', 'Estimate', 'RMSEA'),
+        ('SRMR (Standardized Root Mean Square Residual)', 'Value', 'SRMR'),
+    ]
+    coldata = {}
+    cols = []
+    for part, name, col in indices:
+        cols.append(col)
+        if col not in coldata:
+            coldata[col] = []
+        for df in fitdfs:
+            val = df[(df['part'] == part) & (df['name']==name)]['value'].iloc[0]
+            coldata[col].append(val)
+    fits = pd.DataFrame(coldata)
+    fits['χ２/df'] = fits['χ２']/fits['df']
+    cols.insert(2, 'χ２/df')
+    fits = fits[cols]
+    fits.index = titles
+    return fits
+
+

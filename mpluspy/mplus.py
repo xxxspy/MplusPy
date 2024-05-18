@@ -6,6 +6,7 @@ import os
 
 
 class MplusModel:
+    MaxLineWidth = 50
     CommondNames = ("TITLE", "DATA", "VARIABLE", "DEFINE",
               "MONTECARLO", "MODELPOPULATION", "MODELMISSING", "ANALYSIS",
               "MODEL", "MODELINDIRECT", "MODELCONSTRAINT", "MODELTEST", "MODELPRIORS",
@@ -25,11 +26,11 @@ class MplusModel:
                 MODELMISSING = None,
                 ANALYSIS = None,
                 MODEL = None,
-                MODELINDIRECT = None,
+                MODELINDIRECT = [],
                 MODELCONSTRAINT = None,
                 MODELTEST = None,
                 MODELPRIORS = None,
-                OUTPUT = None,
+                OUTPUT = [],
                 SAVEDATA = None,
                 PLOT = None,
                 usevariables = [],
@@ -46,12 +47,12 @@ class MplusModel:
         self.MODELPOPULATION = MODELPOPULATION
         self.MODELMISSING = MODELMISSING
         self.ANALYSIS = ANALYSIS
-        self.MODEL = MODEL
-        self.MODELINDIRECT = MODELINDIRECT
+        self.MODEL = self.lines_shorter(MODEL)
+        self._MODELINDIRECT = MODELINDIRECT
         self.MODELCONSTRAINT = MODELCONSTRAINT
         self.MODELTEST = MODELTEST
         self.MODELPRIORS = MODELPRIORS
-        self.OUTPUT = OUTPUT
+        self._OUTPUT = OUTPUT
         self.SAVEDATA = SAVEDATA
         self.PLOT = PLOT
         self.usevariables = usevariables
@@ -62,12 +63,65 @@ class MplusModel:
         self.mplus_command = 'mplus'
 
     @cached_property
+    def MODELINDIRECT(self)->str:
+        return self._merge_(self._MODELINDIRECT)
+    
+    def _merge_(self, elements: list[str])->str:
+        r = ''
+        for o in elements:
+            if o:
+                if r:
+                    r += '\n'
+                r += o
+                if not r.endswith(';'):
+                    r += ';'
+        return r
+
+    @cached_property
+    def OUTPUT(self)->str:
+        if isinstance(self._OUTPUT, str):
+            return self._OUTPUT
+        r = ''
+        for o in self._OUTPUT:
+            if o:
+                r += o
+                if not r.endswith(';'):
+                    r += ';'
+        return r
+
+    def lines_shorter(self, lines: str):
+        newlines = []
+        for line in lines.split('\n'):
+            line = self.line_shorter(line)
+            newlines.append(line)
+        return '\n'.join(newlines)
+        
+
+    def line_shorter(self, line: str):
+        if len(line) > self.MaxLineWidth:
+            count = 0
+            lines = []
+            newline = ''
+            for c in line:
+                count += 1
+                newline += c
+                if count >= self.MaxLineWidth and c == ' ':
+                    lines.append(newline)
+                    count = 0
+                    newline = ''
+            if newline:
+                lines.append(newline)
+            line = '\n'.join(lines)
+        return line
+
+
+    @cached_property
     def VARIABLE(self)->str:
         varinfo = self._VARIABLE
         if 'missing' not in varinfo:
             varinfo['missing'] = '.'
         if 'names' not in varinfo:
-            varinfo['names'] = ' '.join(self.var_names)
+            varinfo['names'] = self.line_shorter(' '.join(self.var_names))
         output = ''
         for k, v in varinfo.items():
             newline = ''
@@ -163,7 +217,6 @@ class MplusModel:
             f.write(self.syntax)
         os.system(f'{self.mplus_command} {self.input_file}')
         return output.MplusParser(self.outpu_file)
-    
     
 
         
