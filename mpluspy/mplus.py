@@ -1,14 +1,9 @@
 from functools import cached_property
 import pandas as pd
 import re
-<<<<<<< HEAD
-import os
-from mpluspy.output import MplusParser
-=======
 from mpluspy import output
 import os
 
->>>>>>> d12833667795d8de1cc772e6eba13a635c619dd3
 
 class MplusModel:
     CommondNames = ("TITLE", "DATA", "VARIABLE", "DEFINE",
@@ -64,9 +59,6 @@ class MplusModel:
         self.autov = autov
         self.imputed = imputed
         self.quiet = quiet
-<<<<<<< HEAD
-        self.mplus_cmd = 'mplus'
-=======
         self.mplus_command = 'mplus'
 
     @cached_property
@@ -78,13 +70,17 @@ class MplusModel:
             varinfo['names'] = ' '.join(self.var_names)
         output = ''
         for k, v in varinfo.items():
+            newline = ''
             if isinstance(v, str):
-                output += f'{k}={v};'
+                newline = f'{k}={v};'
             elif isinstance(v, (list, tuple)):
-                output += f'{k}={" ".join(v)}'
+                newline = f'{k}={" ".join(v)};'
+            if newline:
+                if output:
+                    output += '\n    '
+                output += newline
         return output
         
->>>>>>> d12833667795d8de1cc772e6eba13a635c619dd3
 
     @cached_property
     def syntax(self)->str:
@@ -92,7 +88,9 @@ class MplusModel:
         for name, label in zip(self.CommondNames, self.CommondLabels):
             content = getattr(self, name)
             if content:
-                code = f'{label}:\n    {content};'
+                code = f'{label}:\n    {content}'
+                if not code.endswith(';'):
+                    code += ';'
                 codes.append(code)
         return '\n'.join(codes)
     
@@ -156,20 +154,6 @@ class MplusModel:
         if self.usevariables:
             cols = self.usevariables
         else:
-<<<<<<< HEAD
-            cols = self.detect_usevariables()
-        print('cols:', cols)
-        subdf = df[cols]
-        subdf.to_csv(self.data_file, index=None, header=False, sep=' ')
-        return self.data_file
-        
-    def fit(self):
-        self.gen_data_file()
-        with open(self.input_file, 'w', encoding='utf8') as f:
-            f.write(self.syntax)
-        os.system(f'{self.mplus_cmd} {self.input_file}')
-        return MplusParser(self.outpu_file)
-=======
             cols = self.vnames_in_VARIABLE or self.detect_vars_in_model()
         return cols
 
@@ -180,6 +164,6 @@ class MplusModel:
         os.system(f'{self.mplus_command} {self.input_file}')
         return output.MplusParser(self.outpu_file)
     
+    
 
->>>>>>> d12833667795d8de1cc772e6eba13a635c619dd3
         

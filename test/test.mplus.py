@@ -34,13 +34,13 @@ for ig in igroups:
 
 print(igroups)
 
-pdata = pd.read_excel(r'D:\dev\notebooks\jobs\医生知识共享患者健康素养和医患关系\data.xlsx')
+# pdata = pd.read_excel(r'D:\dev\notebooks\jobs\医生知识共享患者健康素养和医患关系\data.xlsx')
 
 model = MplusModel(
     TITLE='验证性因子分析',
     MODEL=bystring,
     OUTPUT='stdxy',
-    pdata=pdata,
+    # pdata=pdata,
 )
 
 print(model.detect_vars_in_model())
