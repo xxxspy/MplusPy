@@ -1,7 +1,8 @@
 from functools import cached_property
 import pandas as pd
 import re
-
+import os
+from mpluspy.output import MplusParser
 
 class MplusModel:
     CommondNames = ("TITLE", "DATA", "VARIABLE", "DEFINE",
@@ -57,6 +58,7 @@ class MplusModel:
         self.autov = autov
         self.imputed = imputed
         self.quiet = quiet
+        self.mplus_cmd = 'mplus'
 
     @cached_property
     def syntax(self)->str:
@@ -116,3 +118,12 @@ class MplusModel:
         print('cols:', cols)
         subdf = df[cols]
         subdf.to_csv(self.data_file, index=None, header=False, sep=' ')
+        return self.data_file
+        
+    def fit(self):
+        self.gen_data_file()
+        with open(self.input_file, 'w', encoding='utf8') as f:
+            f.write(self.syntax)
+        os.system(f'{self.mplus_cmd} {self.input_file}')
+        return MplusParser(self.outpu_file)
+        
