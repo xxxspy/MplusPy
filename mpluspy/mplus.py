@@ -1,8 +1,14 @@
 from functools import cached_property
 import pandas as pd
 import re
+<<<<<<< HEAD
 import os
 from mpluspy.output import MplusParser
+=======
+from mpluspy import output
+import os
+
+>>>>>>> d12833667795d8de1cc772e6eba13a635c619dd3
 
 class MplusModel:
     CommondNames = ("TITLE", "DATA", "VARIABLE", "DEFINE",
@@ -39,7 +45,7 @@ class MplusModel:
                  ) -> None:
         self.TITLE = TITLE
         self._DATA = DATA
-        self.VARIABLE = VARIABLE
+        self._VARIABLE: dict = VARIABLE or {}
         self.DEFINE = DEFINE
         self.MONTECARLO = MONTECARLO
         self.MODELPOPULATION = MODELPOPULATION
@@ -58,7 +64,27 @@ class MplusModel:
         self.autov = autov
         self.imputed = imputed
         self.quiet = quiet
+<<<<<<< HEAD
         self.mplus_cmd = 'mplus'
+=======
+        self.mplus_command = 'mplus'
+
+    @cached_property
+    def VARIABLE(self)->str:
+        varinfo = self._VARIABLE
+        if 'missing' not in varinfo:
+            varinfo['missing'] = '.'
+        if 'names' not in varinfo:
+            varinfo['names'] = ' '.join(self.var_names)
+        output = ''
+        for k, v in varinfo.items():
+            if isinstance(v, str):
+                output += f'{k}={v};'
+            elif isinstance(v, (list, tuple)):
+                output += f'{k}={" ".join(v)}'
+        return output
+        
+>>>>>>> d12833667795d8de1cc772e6eba13a635c619dd3
 
     @cached_property
     def syntax(self)->str:
@@ -88,7 +114,7 @@ class MplusModel:
             return self._DATA
         return f'FILE = "{self.data_file}"'
     
-    def detect_usevariables(self)->list[str]:
+    def detect_vars_in_model(self)->list[str]:
         ptn = re.compile("^(.*)( by | BY | By | on | ON | On )(.*)$")
         vnames = []
         for line in self.MODEL.replace('\n', '').split(';'):
@@ -111,9 +137,26 @@ class MplusModel:
         
     def gen_data_file(self):
         df = self.pdata
+        cols = self.var_names
+        subdf = df[cols]
+        subdf.to_csv(self.data_file, index=None, header=False, sep=' ')
+
+    @cached_property
+    def vnames_in_VARIABLE(self)->list[str]:
+        vnames = []
+        if self._VARIABLE:
+            if 'names' in self._VARIABLE:
+                vnames = self._VARIABLE['names']
+            elif 'usevariables' in self._VARIABLE:
+                vnames = self._VARIABLE['names']
+        return vnames
+
+    @cached_property
+    def var_names(self)->list:
         if self.usevariables:
             cols = self.usevariables
         else:
+<<<<<<< HEAD
             cols = self.detect_usevariables()
         print('cols:', cols)
         subdf = df[cols]
@@ -126,4 +169,17 @@ class MplusModel:
             f.write(self.syntax)
         os.system(f'{self.mplus_cmd} {self.input_file}')
         return MplusParser(self.outpu_file)
+=======
+            cols = self.vnames_in_VARIABLE or self.detect_vars_in_model()
+        return cols
+
+    def fit(self)->output.MplusParser:
+        self.gen_data_file()
+        with open(self.input_file, 'w', encoding='utf8') as f:
+            f.write(self.syntax)
+        os.system(f'{self.mplus_command} {self.input_file}')
+        return output.MplusParser(self.outpu_file)
+    
+
+>>>>>>> d12833667795d8de1cc772e6eba13a635c619dd3
         

@@ -43,6 +43,7 @@ model = MplusModel(
     pdata=pdata,
 )
 
-print(model.detect_usevariables())
+print(model.detect_vars_in_model())
 print(model.syntax)
-model.gen_data_file()
+# model.gen_data_file()
+print(model.vnames_in_VARIABLE)
