@@ -122,6 +122,11 @@ class MplusModel:
             varinfo['missing'] = '.'
         if 'names' not in varinfo:
             varinfo['names'] = self.line_shorter(' '.join(self.var_names))
+        if self.usevariables:
+            varinfo['usevariables'] = self.usevariables
+        if 'usevariables' not in varinfo:
+            if self.defined_vars:
+                varinfo['usevariables'] = self.var_names + self.defined_vars
         output = ''
         for k, v in varinfo.items():
             newline = ''
@@ -142,7 +147,7 @@ class MplusModel:
         for name, label in zip(self.CommondNames, self.CommondLabels):
             content = getattr(self, name)
             if content:
-                code = f'{label}:\n    {content}'
+                code = f'{label}:\n    {content.strip()}'
                 if not code.endswith(';'):
                     code += ';'
                 codes.append(code)
@@ -171,7 +176,6 @@ class MplusModel:
         vnames = []
         for line in self.MODEL.replace('\n', '').split(';'):
             mt = ptn.match(line)
-            print(line, ptn.match(line))
             if mt:
                 op = mt.group(2)
                 vnames += line.replace(op, ' ').split(' ')
@@ -186,6 +190,20 @@ class MplusModel:
                         cleaned.append(v)
         return cleaned
 
+    @cached_property
+    def defined_vars(self):
+        names = []
+        if not self.DEFINE:
+            return names
+        df = self.DEFINE.replace('\n', '')
+        for line in df.split(';'):
+            line = line.strip()
+            if not line:
+                continue
+            vname = line.split('=')[0].strip()
+            if vname:names.append(vname)
+        return names
+        
         
     def gen_data_file(self):
         df = self.pdata

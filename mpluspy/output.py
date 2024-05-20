@@ -66,7 +66,6 @@ class MplusParser:
         return df
     
     def model_results_filter(self, df: pd.DataFrame, oper='BY'):
-        print(df)
         index = df.index.map(lambda x : x[2].endswith(f'.{oper}'))
         return df[index]
 
@@ -221,7 +220,6 @@ class MplusParser:
         crr = self.corr_matrix
         disdf = crr ** 2
         ave = self.ave_cr['AVE']
-        print(ave)
         for vn in disdf.index:
             disdf.loc[vn, vn] = ave[vn]
         return disdf
@@ -241,9 +239,6 @@ class MplusParser:
         for line in content.split('\n'):
             if not line.strip():continue
             numbers = numptn.findall(line)
-            print(line)
-            print('numbers', numbers)
-            print('varname', vname_ptn.findall(line))
             if 'Specific indirect' in line:
                 continue
             elif len(numbers) == 4:
@@ -260,19 +255,14 @@ class MplusParser:
     def _parse_indirect_results(self, content: str)->pd.DataFrame:
         cols = 'Path Effect Estimate       S.E.  Est./S.E.    P-Value'.split()
         part_ptn = re.compile(f'Effects from {VAR_NAME_PTN} to {VAR_NAME_PTN}')
-        print(part_ptn)
         matches = part_ptn.findall(content)
         rows = []
         if matches:
             parts = part_ptn.split(content)
-            print('len parts:', len(parts))
-            print(parts)
             for i, part  in enumerate(parts):
                 if i == 0:continue
-                print('part:', part)
                 rows += self.__parse_indirect_parts(matches[i-1], part)
         df = pd.DataFrame(rows, columns=cols)
-        print(df)
         return df
 
     def _parse_model_results(self, content: str)->dict:

@@ -158,10 +158,134 @@ model = MplusModel(
     pdata=pdata,
 )
 
-sem = model.fit()
-# print(sem.stdyx_model_results_df)
-coefs = sem.structure_results_df
-print(coefs)
-inds = sem.indrect_df
-print('%%%%%%%%%%%%%%%%%%%%%%%%')
-print(inds)
+# sem = model.fit()
+# # print(sem.stdyx_model_results_df)
+# coefs = sem.structure_results_df
+# print(coefs)
+# inds = sem.indrect_df
+# print('%%%%%%%%%%%%%%%%%%%%%%%%')
+# print(inds)
+
+def merge_items(df: pd.DataFrame, igroups: list[dict]):
+    for ig in  igroups:
+        df[ig['name']] = df[ig['items']].mean(axis=1)
+
+
+
+pdata2 = pdata.copy()
+merge_items(pdata2, igroups)
+fnames = [ig['name'] for ig in igroups]
+
+pdata2 = pdata2[fnames]
+
+def test_all_moder():
+    dfs = []
+    index = []
+    for adjvar in ('EC', 'CF', 'JE'):
+
+        define = f'''
+            {adjvar}xATT = {adjvar}*ATT;
+            {adjvar}xSN = {adjvar}*SN;
+            {adjvar}xPBC = {adjvar}*PBC;
+            {adjvar}xBI = {adjvar}*BI;
+            {adjvar}xAB = {adjvar}*AB;
+            {adjvar}xPPHL = {adjvar}*PPHL;
+        '''
+
+        struc_syntax = f'''
+            BI on ATT SN PBC {adjvar}xATT {adjvar}xSN {adjvar}xPBC {adjvar};
+            AB on CF BI PBC {adjvar}xBI {adjvar}xPBC {adjvar};
+            PPHL on AB {adjvar}xAB {adjvar};
+            DPT on AB PPHL {adjvar}xAB {adjvar}xPPHL {adjvar};
+        '''
+
+        adjmodel_ec = MplusModel(
+            TITLE=f'moderated-sem-{adjvar}',
+            MODEL=struc_syntax,
+            DEFINE=define,
+            OUTPUT=['STANDARDIZED'],
+            pdata=pdata2,
+        )
+        fit_ec = adjmodel_ec.fit()
+        df = fit_ec.structure_results_df
+        df = df[df['Path'].map(lambda x: 'X' in x)]
+        dfs.append(df)
+        index += ['Model ' + adjvar] * len(df)
+    df = pd.concat(dfs)
+    df.index = index
+    return df
+
+# allmodereffs = test_all_moder()
+# print(allmodereffs)
+# stop
+
+
+## 假定 EC 调节了 BI on ATT SN PBC
+adjvar = 'EC'
+define = f'''
+    {adjvar}xATT = {adjvar}*ATT;
+    {adjvar}xSN = {adjvar}*SN;
+    {adjvar}xPBC = {adjvar}*PBC;
+'''
+struc_syntax = f'''
+    BI on ATT SN PBC {adjvar}xATT {adjvar}xSN {adjvar}xPBC {adjvar};
+    AB on CF BI PBC ;
+    PPHL on AB;
+    DPT on AB PPHL ;
+'''
+df = MplusModel(
+            TITLE=f'moderated-sem-{adjvar}-final',
+            MODEL=struc_syntax,
+            DEFINE=define,
+            OUTPUT=['STANDARDIZED'],
+            pdata=pdata2,
+        ).fit()
+
+print(df.structure_results_df)
+
+
+## 假定 CF 调节了 AB on BI PBC
+
+adjvar = 'CF'
+define = f'''
+    {adjvar}xBI = {adjvar}*BI;
+    {adjvar}xPBC = {adjvar}*PBC;
+'''
+struc_syntax = f'''
+    BI on ATT SN PBC;
+    AB on CF BI PBC {adjvar}xBI {adjvar}xPBC;
+    PPHL on AB;
+    DPT on AB PPHL ;
+'''
+df = MplusModel(
+            TITLE=f'moderated-sem-{adjvar}-final',
+            MODEL=struc_syntax,
+            DEFINE=define,
+            OUTPUT=['STANDARDIZED'],
+            pdata=pdata2,
+        ).fit()
+
+print(df.structure_results_df)
+
+
+## 假定 JE 调节了 PPHL on AB
+
+adjvar = 'JE'
+define = f'''
+    {adjvar}xAB = {adjvar}*AB;
+'''
+struc_syntax = f'''
+    BI on ATT SN PBC;
+    AB on CF BI PBC ;
+    PPHL on AB {adjvar} {adjvar}xAB;
+    DPT on AB PPHL ;
+'''
+df = MplusModel(
+            TITLE=f'moderated-sem-{adjvar}-final',
+            MODEL=struc_syntax,
+            DEFINE=define,
+            OUTPUT=['STANDARDIZED'],
+            pdata=pdata2,
+        ).fit()
+
+print(df.structure_results_df)
