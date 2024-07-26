@@ -19,8 +19,7 @@ class MplusParser:
     def __init__(self, fpath: str) -> None:
         self.fpath = fpath
         content = Path(fpath).read_text(encoding='utf8')
-        
-        title_ptn = r"^\n\n[A-Z][A-Z, \-]*\n$"
+        title_ptn = r"^\n\n[A-Z][A-Z,\d \-]*\n$"
         titles = re.findall(title_ptn, content, re.MULTILINE)
         titles = [t.strip() for t in titles]
         parts = re.split(title_ptn, content, maxsplit=len(titles)+1, flags=re.MULTILINE)
@@ -37,6 +36,7 @@ class MplusParser:
         self.model_fit_information_str = parts[titles.index(self.TITLES[2])+1]
         self.parts = parts
         self.titles = titles
+        self.content = content
         
     @cached_property
     def model_results(self):
@@ -330,6 +330,29 @@ class MplusParser:
                     break
             err += f'\n File is : {self.fpath}'
             raise MplusError(err)
+        
+    def _parse_single_column_data(self, content: str)->list:
+        '''用于解析只有一列数据的字符串， 第一列是名称，第二列是数据
+        例如：
+            content = """
+             VUONG-LO-MENDELL-RUBIN LIKELIHOOD RATIO TEST FOR 2 (H0) VERSUS 3 CLASSES
+
+          H0 Loglikelihood Value                        -1180.844
+          2 Times the Loglikelihood Difference            124.066
+          Difference in the Number of Parameters               11
+          Mean                                            -82.274
+          Standard Deviation                              172.675
+          P-Value                                          0.0156
+        """
+        '''
+        rows = []
+        for line in content.split('\n'):
+            line = line.strip()
+            parts = re.split(r'\s{2,}', line)
+            if len(parts) == 2:
+                rows.append(parts)
+        return rows
+
         
 
 def aggregate_fits(fitdfs: list[pd.DataFrame], titles: list[str]):

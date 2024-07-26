@@ -227,6 +227,9 @@ define = f'''
     {adjvar}xSN = {adjvar}*SN;
     {adjvar}xPBC = {adjvar}*PBC;
 '''
+
+
+
 struc_syntax = f'''
     BI on ATT SN PBC {adjvar}xATT {adjvar}xSN {adjvar}xPBC {adjvar};
     AB on CF BI PBC ;
